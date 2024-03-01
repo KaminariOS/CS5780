@@ -158,7 +158,7 @@ all: $(BUILD_DIR)/$(TARGET).elf
 
 program: all
 	$(CP) -O binary $(BUILD_DIR)/$(TARGET).elf $(BUILD_DIR)/$(TARGET).bin
-	st-flash --reset --flash=128k write $(BUILD_DIR)/$(TARGET).bin 0x8000000
+	sudo st-flash --reset --flash=128k write $(BUILD_DIR)/$(TARGET).bin 0x8000000
 
 #######################################
 # build the application

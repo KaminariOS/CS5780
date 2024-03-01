@@ -94,6 +94,7 @@ void transmit_string(char *s) {
 void recieve_LED() {
     if (USART3->ISR & USART_CR1_RXNEIE) {
         color = USART3->RDR;
+        // transmit_string("recieve char");
         switch (color) {
             case 'r':
                 HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_6);
@@ -200,9 +201,9 @@ int main(void) {
     NVIC_EnableIRQ(USART3_4_IRQn);
 
     while (1) {
-        HAL_Delay(1000);
-        transmit_string("CMD?");
-        //recieve_LED();
+        // HAL_Delay(1000);
+        // transmit_string("CMD?");
+        // recieve_LED();
     }
 }
 
