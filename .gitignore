@@ -1,0 +1,6 @@
+.ccls*
+*.json
+build
+*.bin
+*.elf
+

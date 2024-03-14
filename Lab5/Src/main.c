@@ -84,7 +84,12 @@ void transmit_char(char c) {
 */
 void transmit_string(char *s) {
     for (int i = 0; s[i] != '\0'; i++)
+    {
         transmit_char(s[i]);
+        if (s[i] == '\n') {
+            transmit_char('\r');
+        }
+    }
 }
 
 /**
@@ -170,6 +175,37 @@ void USART3_4_IRQHandler() {
 
 /* USER CODE END 0 */
 
+void I2C_write(int addr, char data) {
+    I2C2->CR2 |= addr << (I2C_CR2_SADD_Pos + 1); 
+    I2C2->CR2 |= 1 << I2C_CR2_NBYTES_Pos;
+    // Set the RD_WRN bit to indicate a write operation.
+    I2C2->CR2 |= 0 << I2C_CR2_RD_WRN_Pos;
+    I2C2->CR2 |= I2C_CR2_START;
+    while (!(I2C2->ISR & (I2C_ISR_TXIS | I2C_ISR_NACKF))) {
+        transmit_string("Waiting at the first loop\n");
+    }
+    if (I2C2->ISR & I2C_ISR_NACKF) {
+        transmit_string("NACKF\n");
+        // error!        
+    }
+    I2C2->TXDR = data;
+    while (!(I2C2->ISR & I2C_ISR_TC)) {}
+}
+
+char I2C_read(int addr) {
+    I2C2->CR2 |= addr << (I2C_CR2_SADD_Pos + 1); 
+    I2C2->CR2 |= 1 << I2C_CR2_NBYTES_Pos;
+    I2C2->CR2 |= 1 << I2C_CR2_RD_WRN_Pos;
+    I2C2->CR2 |= I2C_CR2_START;
+    while (!(I2C2->ISR & (I2C_ISR_RXNE | I2C_ISR_NACKF))) {
+    }
+    if (I2C2->ISR & I2C_ISR_NACKF) {
+        // error!        
+    }
+    while (!(I2C2->ISR & I2C_ISR_TC)) {}
+    return I2C2->RXDR ; 
+}
+
 int main(void) {
     HAL_Init();
     SystemClock_Config();
@@ -177,7 +213,8 @@ int main(void) {
     // Initialize Clock
     __HAL_RCC_GPIOB_CLK_ENABLE();
     __HAL_RCC_GPIOC_CLK_ENABLE();
-    RCC->APB1ENR = RCC_APB1ENR_USART3EN;
+    __HAL_RCC_I2C2_CLK_ENABLE();
+    RCC->APB1ENR |= RCC_APB1ENR_USART3EN;
 
     // Initialize LED pins
     GPIO_InitTypeDef initStr = {GPIO_PIN_8 | GPIO_PIN_9 | GPIO_PIN_6 | GPIO_PIN_7,
@@ -187,22 +224,111 @@ int main(void) {
     HAL_GPIO_Init(GPIOC, &initStr);  // Initialize LED pins
 
     /* 4.1 section */
-    GPIO_InitTypeDef initStr2 = {GPIO_PIN_10 | GPIO_PIN_11,
-                                 GPIO_MODE_AF_PP,
-                                 GPIO_SPEED_FREQ_LOW,
-                                 GPIO_NOPULL};
-    HAL_GPIO_Init(GPIOC, &initStr2);
+    // GPIO_InitTypeDef initStr2 = {GPIO_PIN_10 | GPIO_PIN_11,
+    //                              GPIO_MODE_AF_PP,
+    //                              GPIO_SPEED_FREQ_LOW,
+    //                              GPIO_NOPULL};
+    // HAL_GPIO_Init(GPIOC, &initStr2);
+    // GPIOC->AFR[1] |= (GPIO_AF1_USART3 << 8) | (GPIO_AF1_USART3 << 12);
+    // USART3->CR1 |= USART_CR1_TE | USART_CR1_RE | USART_CR1_UE | USART_CR1_RXNEIE;
+    // USART3->BRR = 69;  // HAL_RCC_GetHCLKFreq() / 115200 ~= 70 or 69
+    //
+    // NVIC_EnableIRQ(USART3_4_IRQn);
 
-    GPIOC->AFR[1] |= (GPIO_AF1_USART3 << 8) | (GPIO_AF1_USART3 << 12);
+ // 2. Set PB11 to alternate function mode, open-drain output typ
+ // Set PB13 to alternate function mode, open-drain output type, and select I2C2_SCL as its alternate function.
+    GPIO_InitTypeDef initStr_l3 = {GPIO_PIN_11 | GPIO_PIN_13,
+                                GPIO_MODE_AF_OD,
+                                GPIO_SPEED_FREQ_LOW,
+                                GPIO_NOPULL};
+    HAL_GPIO_Init(GPIOB, &initStr_l3);
+    GPIOB->AFR[1] |= (GPIO_AF1_I2C2 << 12) | (GPIO_AF5_I2C2 << 20);
 
-    USART3->CR1 |= USART_CR1_TE | USART_CR1_RE | USART_CR1_UE | USART_CR1_RXNEIE;
-    USART3->BRR = 69;  // HAL_RCC_GetHCLKFreq() / 115200 ~= 70 or 69
 
-    NVIC_EnableIRQ(USART3_4_IRQn);
+    // 4. Set PB14 to output mode, push-pull output type, and initialize/set the pin high.
+    GPIO_InitTypeDef initStr_l3_1 = {GPIO_PIN_14,
+                                GPIO_MODE_OUTPUT_PP,
+                                GPIO_SPEED_FREQ_LOW,
+                                GPIO_NOPULL};
+    HAL_GPIO_Init(GPIOB, &initStr_l3_1);
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_14, GPIO_PIN_SET);
+
+    // 5. Set PC0 to output mode, push-pull output type, and initialize/set the pin high.
+    GPIO_InitTypeDef initStr_l3_2 = {GPIO_PIN_0,
+                                GPIO_MODE_OUTPUT_PP,
+                                GPIO_SPEED_FREQ_LOW,
+                                GPIO_NOPULL};
+    HAL_GPIO_Init(GPIOC, &initStr_l3_2);
+    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_0, GPIO_PIN_SET);
+
+    //  Set the parameters in the TIMINGR register to use 100 kHz s
+    I2C2->TIMINGR |= 
+        (0x13 << I2C_TIMINGR_SCLL_Pos) | 
+        (0xF << I2C_TIMINGR_SCLH_Pos ) |
+        (0x2 << I2C_TIMINGR_SDADEL_Pos) | 
+        (0x4 << I2C_TIMINGR_SCLDEL_Pos) | 
+        (1 << I2C_TIMINGR_PRESC_Pos) ;
+
+    I2C2->CR1 |= I2C_CR1_PECEN;
+    // Set the L3GD20 slave address
+    I2C2->CR2 &= ~((0x7F << 16) | (0x3FF << 0));
+    I2C2->CR2 |= 0x69 << (I2C_CR2_SADD_Pos + 1); 
+    I2C2->CR2 |= 1 << I2C_CR2_NBYTES_Pos;
+    // Set the RD_WRN bit to indicate a write operation.
+    
+    I2C2->CR2 &= ~I2C_CR2_RD_WRN_Msk;
+    I2C2->CR2 |= I2C_CR2_START;
+
+    HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_8);;
+    HAL_Delay(1000);
+    while (!(I2C2->ISR & (I2C_ISR_TXIS | I2C_ISR_NACKF))) {
+        // transmit_string("Waiting at the first loop\n");
+    }
+    HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_8);
+    if (I2C2->ISR & I2C_ISR_NACKF) {
+        transmit_string("NACKF\n");
+        // error!        
+    }
+    transmit_string("Waiting after the loop\n");
+    I2C2->TXDR = 0xD3;
+    // while (!(I2C2->ISR & I2C_ISR_TC)) {}
+    //
+    //
+    // I2C2->CR2 |= 0x69 << (I2C_CR2_SADD_Pos + 1); 
+    // I2C2->CR2 |= 1 << I2C_CR2_NBYTES_Pos;
+    // I2C2->CR2 |= 1 << I2C_CR2_RD_WRN_Pos;
+    // I2C2->CR2 |= I2C_CR2_START;
+    // while (!(I2C2->ISR & (I2C_ISR_RXNE | I2C_ISR_NACKF))) {
+    // }
+    // if (I2C2->ISR & I2C_ISR_NACKF) {
+    //     // error!        
+    // }
+    // while (!(I2C2->ISR & I2C_ISR_TC)) {}
+    // if (I2C2->RXDR == 0xD4) {
+            // transmit_string("Read 0xD4");
+    // }
+    // I2C2->CR2 |= I2C_CR2_STOP;
+
+    
+    // CTRL_REG1
+    I2C_write(0x20, 0x07);
+    I2C2->CR2 |= 0x20 << (I2C_CR2_SADD_Pos + 1); 
+
+
+    // X_L
+    I2C_read(0x28);
+    // X_H
+    I2C_read(0x29);
+    // Y_L
+    I2C_read(0x2A);
+    // Y_H
+    I2C_read(0x2B);
+
+
 
     while (1) {
-        // HAL_Delay(1000);
-        transmit_string("CMD?");
+        HAL_Delay(100);
+        // transmit_string("Loop?");
         // recieve_LED();
     }
 }
