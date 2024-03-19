@@ -96,28 +96,28 @@ void transmit_string(char *s) {
  * @brief Toggle LEDS from given r,g,b,o characters 
  *        4.1 section checkoff
 */
-void recieve_LED() {
-    if (USART3->ISR & USART_CR1_RXNEIE) {
-        color = USART3->RDR;
-        // transmit_string("recieve char");
-        switch (color) {
-            case 'r':
-                HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_6);
-                break;
-            case 'b':
-                HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_7);
-                break;
-            case 'o':
-                HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_8);
-                break;
-            case 'g':
-                HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_9);
-                break;
-        }
-        if (color != 'r' && color != 'b' && color != 'g' && color != 'o')
-            transmit_string("Error");
-    }
-}
+// void recieve_LED() {
+//     if (USART3->ISR & USART_CR1_RXNEIE) {
+//         color = USART3->RDR;
+//         // transmit_string("recieve char");
+//         switch (color) {
+//             case 'r':
+//                 HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_6);
+//                 break;
+//             case 'b':
+//                 HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_7);
+//                 break;
+//             case 'o':
+//                 HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_8);
+//                 break;
+//             case 'g':
+//                 HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_9);
+//                 break;
+//         }
+//         if (color != 'r' && color != 'b' && color != 'g' && color != 'o')
+//             transmit_string("Error");
+//     }
+// }
 
 /**
  * @brief Toggle LEDS from given r,g,b,o characters with extra modes
@@ -176,13 +176,15 @@ void USART3_4_IRQHandler() {
 /* USER CODE END 0 */
 
 void I2C_write(int addr, char data) {
+    // I2C2->CR2 &= ~((0x7F << 16) | (0x3FF << 0));
     I2C2->CR2 |= addr << (I2C_CR2_SADD_Pos + 1); 
     I2C2->CR2 |= 1 << I2C_CR2_NBYTES_Pos;
     // Set the RD_WRN bit to indicate a write operation.
-    I2C2->CR2 |= 0 << I2C_CR2_RD_WRN_Pos;
+    I2C2->CR2 &= ~(I2C_CR2_RD_WRN);
     I2C2->CR2 |= I2C_CR2_START;
     while (!(I2C2->ISR & (I2C_ISR_TXIS | I2C_ISR_NACKF))) {
-        transmit_string("Waiting at the first loop\n");
+        // HAL_Delay(100);
+        // transmit_string("Waiting at the first loop\n");
     }
     if (I2C2->ISR & I2C_ISR_NACKF) {
         transmit_string("NACKF\n");
@@ -192,7 +194,8 @@ void I2C_write(int addr, char data) {
     while (!(I2C2->ISR & I2C_ISR_TC)) {}
 }
 
-char I2C_read(int addr) {
+uint32_t I2C_read(int addr) {
+    I2C2->CR2 &= ~((0x7F << 16) | (0x3FF << 0));
     I2C2->CR2 |= addr << (I2C_CR2_SADD_Pos + 1); 
     I2C2->CR2 |= 1 << I2C_CR2_NBYTES_Pos;
     I2C2->CR2 |= 1 << I2C_CR2_RD_WRN_Pos;
@@ -224,16 +227,16 @@ int main(void) {
     HAL_GPIO_Init(GPIOC, &initStr);  // Initialize LED pins
 
     /* 4.1 section */
-    // GPIO_InitTypeDef initStr2 = {GPIO_PIN_10 | GPIO_PIN_11,
-    //                              GPIO_MODE_AF_PP,
-    //                              GPIO_SPEED_FREQ_LOW,
-    //                              GPIO_NOPULL};
-    // HAL_GPIO_Init(GPIOC, &initStr2);
-    // GPIOC->AFR[1] |= (GPIO_AF1_USART3 << 8) | (GPIO_AF1_USART3 << 12);
-    // USART3->CR1 |= USART_CR1_TE | USART_CR1_RE | USART_CR1_UE | USART_CR1_RXNEIE;
-    // USART3->BRR = 69;  // HAL_RCC_GetHCLKFreq() / 115200 ~= 70 or 69
-    //
-    // NVIC_EnableIRQ(USART3_4_IRQn);
+    GPIO_InitTypeDef initStr2 = {GPIO_PIN_10 | GPIO_PIN_11,
+                                 GPIO_MODE_AF_PP,
+                                 GPIO_SPEED_FREQ_LOW,
+                                 GPIO_NOPULL};
+    HAL_GPIO_Init(GPIOC, &initStr2);
+    GPIOC->AFR[1] |= (GPIO_AF1_USART3 << 8) | (GPIO_AF1_USART3 << 12);
+    USART3->CR1 |= USART_CR1_TE | USART_CR1_RE | USART_CR1_UE | USART_CR1_RXNEIE;
+    USART3->BRR = 69;  // HAL_RCC_GetHCLKFreq() / 115200 ~= 70 or 69
+
+    NVIC_EnableIRQ(USART3_4_IRQn);
 
  // 2. Set PB11 to alternate function mode, open-drain output typ
  // Set PB13 to alternate function mode, open-drain output type, and select I2C2_SCL as its alternate function.
@@ -269,67 +272,77 @@ int main(void) {
         (0x4 << I2C_TIMINGR_SCLDEL_Pos) | 
         (1 << I2C_TIMINGR_PRESC_Pos) ;
 
-    I2C2->CR1 |= I2C_CR1_PECEN;
+    I2C2->CR1 |= I2C_CR1_PE;
     // Set the L3GD20 slave address
     I2C2->CR2 &= ~((0x7F << 16) | (0x3FF << 0));
-    I2C2->CR2 |= 0x69 << (I2C_CR2_SADD_Pos + 1); 
-    I2C2->CR2 |= 1 << I2C_CR2_NBYTES_Pos;
-    // Set the RD_WRN bit to indicate a write operation.
     
-    I2C2->CR2 &= ~I2C_CR2_RD_WRN_Msk;
-    I2C2->CR2 |= I2C_CR2_START;
+    int GYRO_ADDR = 0x69;
 
-    HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_8);;
-    HAL_Delay(1000);
-    while (!(I2C2->ISR & (I2C_ISR_TXIS | I2C_ISR_NACKF))) {
-        // transmit_string("Waiting at the first loop\n");
-    }
-    HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_8);
-    if (I2C2->ISR & I2C_ISR_NACKF) {
-        transmit_string("NACKF\n");
-        // error!        
-    }
-    transmit_string("Waiting after the loop\n");
-    I2C2->TXDR = 0xD3;
-    // while (!(I2C2->ISR & I2C_ISR_TC)) {}
-    //
-    //
-    // I2C2->CR2 |= 0x69 << (I2C_CR2_SADD_Pos + 1); 
-    // I2C2->CR2 |= 1 << I2C_CR2_NBYTES_Pos;
-    // I2C2->CR2 |= 1 << I2C_CR2_RD_WRN_Pos;
-    // I2C2->CR2 |= I2C_CR2_START;
-    // while (!(I2C2->ISR & (I2C_ISR_RXNE | I2C_ISR_NACKF))) {
+
+    // while (1) {
+        I2C_write(GYRO_ADDR, 0xF);
+
+        uint32_t val = I2C_read(GYRO_ADDR);
+        if (val == 0xD3) {
+            // while (1) {
+                transmit_string("Read 0xD3\n");
+            // }
+        }     
+        I2C2->CR2 |= I2C_CR2_STOP;
     // }
-    // if (I2C2->ISR & I2C_ISR_NACKF) {
-    //     // error!        
+    // while (1) {
+    //     transmit_string("test 0xD3\n");
     // }
-    // while (!(I2C2->ISR & I2C_ISR_TC)) {}
-    // if (I2C2->RXDR == 0xD4) {
-            // transmit_string("Read 0xD4");
-    // }
-    // I2C2->CR2 |= I2C_CR2_STOP;
 
     
     // CTRL_REG1
-    I2C_write(0x20, 0x07);
-    I2C2->CR2 |= 0x20 << (I2C_CR2_SADD_Pos + 1); 
-
-
-    // X_L
-    I2C_read(0x28);
-    // X_H
-    I2C_read(0x29);
-    // Y_L
-    I2C_read(0x2A);
-    // Y_H
-    I2C_read(0x2B);
-
-
+    I2C_write(GYRO_ADDR, 0x20 | 0xB);
 
     while (1) {
         HAL_Delay(100);
-        // transmit_string("Loop?");
-        // recieve_LED();
+        transmit_string("Read x_L\n");
+        // X_L
+        I2C_write(GYRO_ADDR, 0x28);
+        char X_L = I2C_read(GYRO_ADDR);
+        I2C2->CR2 |= I2C_CR2_STOP;
+        // X_H
+        transmit_string("Read x_H\n");
+        I2C_write(GYRO_ADDR, 0x29);
+        char X_H = I2C_read(GYRO_ADDR);
+        I2C2->CR2 |= I2C_CR2_STOP;
+        // Y_L
+        I2C_write(GYRO_ADDR, 0x2A);
+        char Y_L = I2C_read(GYRO_ADDR);
+        I2C2->CR2 |= I2C_CR2_STOP;
+        // Y_H
+        I2C_write(GYRO_ADDR, 0x2B);
+        char Y_H = I2C_read(GYRO_ADDR);
+        I2C2->CR2 |= I2C_CR2_STOP;
+            // transmit_string("Loop?");
+            // recieve_LED();
+        int16_t y_data = (Y_H << 8) | Y_L; 
+        int16_t x_data = (X_H << 8) | X_L; 
+
+        /* turning LEDs on*/
+        int limit = 10000;
+        if (x_data > limit)  // turns on orange LED if X is +
+            HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, GPIO_PIN_SET);
+        else 
+            HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, GPIO_PIN_RESET);
+        if (x_data < -limit)  // turns on green LED if X is -
+            HAL_GPIO_WritePin(GPIOC, GPIO_PIN_9, GPIO_PIN_SET);
+        else 
+            HAL_GPIO_WritePin(GPIOC, GPIO_PIN_9, GPIO_PIN_RESET);
+        if (y_data > limit)  // turns on red LED if Y is +
+            HAL_GPIO_WritePin(GPIOC, GPIO_PIN_6, GPIO_PIN_SET);
+        else 
+            HAL_GPIO_WritePin(GPIOC, GPIO_PIN_6, GPIO_PIN_RESET);
+        if (y_data < -limit)  // turns on blue LED if Y is -
+            HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, GPIO_PIN_SET);
+        else 
+            HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, GPIO_PIN_RESET);
+        // delay for reading
+        HAL_Delay(100);
     }
 }
 
