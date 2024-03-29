@@ -93,8 +93,8 @@ void encoder_init(void) {
     RCC->APB1ENR |= RCC_APB1ENR_TIM6EN;
     
     // Select PSC and ARR values that give an appropriate interrupt rate
-    TIM6->PSC = 15;
-    TIM6->ARR = 46875;
+    TIM6->PSC = 11;
+    TIM6->ARR = 30000;
     
     TIM6->DIER |= TIM_DIER_UIE;             // Enable update event interrupt
     TIM6->CR1 |= TIM_CR1_CEN;               // Enable Timer
@@ -159,7 +159,7 @@ void PI_update(void) {
      */
     
     /// TODO: calculate error signal and write to "error" variable
-    error = target_rpm - motor_speed / 5;
+    error = target_rpm - motor_speed / 2;
     
     
     /* Hint: Remember that your calculated motor speed may not be directly in RPM!
